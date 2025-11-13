@@ -1,0 +1,12 @@
+FastAPI
+uvicorn
+influxdb-client
+influxdb3-python
+jinja2
+python-dotenv
+pydantic
+aiohttp
+requests
+
+# Telemetry monitoring
+libvirt-python  # Optional: for KVM/QEMU monitoring

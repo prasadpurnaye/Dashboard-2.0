@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2.0 - Telemetry Monitoring</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>Dashboard 2.0</h1>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="nav-link">Main Gauges</a>
+                <a href="/vms" class="nav-link">VMs</a>
+                <a href="/telemetry" class="nav-link active">Telemetry</a>
+                <a href="/memory-dumps" class="nav-link">Memory Dumps</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Telemetry Dashboard Section -->
+    <div class="telemetry-dashboard">
+        <div class="telemetry-header">
+            <h2>Telemetry Monitoring</h2>
+            <p class="telemetry-subtitle">Control and monitor KVM/QEMU telemetry collection</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="telemetry-control-panel">
+            <div class="control-section">
+                <h3>Telemetry Controls</h3>
+                <div class="button-group">
+                    <button id="btn-start" class="btn btn-start" onclick="startTelemetry()">
+                        <span class="btn-icon">▶</span> Start Monitoring
+                    </button>
+                    <button id="btn-stop" class="btn btn-stop" onclick="stopTelemetry()" disabled>
+                        <span class="btn-icon">⏹</span> Stop Monitoring
+                    </button>
+                    <button id="btn-refresh" class="btn btn-refresh" onclick="refreshStatus()">
+                        <span class="btn-icon">🔄</span> Refresh Status
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Card -->
+        <div class="telemetry-card">
+            <div class="card-header">
+                <h3>Telemetry Status</h3>
+                <div id="status-indicator" class="status-indicator status-stopped">Stopped</div>
+            </div>
+            <div id="status-content" class="status-content">
+                <div class="status-row">
+                    <span class="status-label">Status:</span>
+                    <span id="status-value" class="status-value">Not Running</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Running:</span>
+                    <span id="running-value" class="status-value">No</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Message:</span>
+                    <span id="message-value" class="status-value">Ready to start</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Collections:</span>
+                    <span id="collections-value" class="status-value">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">VMs Monitored:</span>
+                    <span id="vms-count-value" class="status-value">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Total Metrics:</span>
+                    <span id="metrics-value" class="status-value">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Last Collection:</span>
+                    <span id="last-collection-value" class="status-value">Never</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Errors:</span>
+                    <span id="errors-value" class="status-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- VMs Card -->
+        <div class="telemetry-card">
+            <div class="card-header">
+                <h3>Monitored Virtual Machines</h3>
+            </div>
+            <div id="vms-list" class="vms-list">
+                <div class="empty-state">No VMs discovered yet. Start telemetry to discover VMs.</div>
+            </div>
+        </div>
+
+        <!-- Configuration Card -->
+        <div class="telemetry-card">
+            <div class="card-header">
+                <h3>Configuration</h3>
+            </div>
+            <div id="config-content" class="config-content">
+                <div class="status-row">
+                    <span class="status-label">LibVirt URI:</span>
+                    <span id="config-libvirt" class="status-value">Not configured</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">InfluxDB URL:</span>
+                    <span id="config-influx" class="status-value">Not configured</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Database:</span>
+                    <span id="config-db" class="status-value">Not configured</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Poll Interval:</span>
+                    <span id="config-poll" class="status-value">Not configured</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Log Card -->
+        <div class="telemetry-card">
+            <div class="card-header">
+                <h3>Recent Activity</h3>
+                <button class="btn btn-small" onclick="clearActivityLog()">Clear</button>
+            </div>
+            <div id="activity-log" class="activity-log">
+                <div class="activity-item activity-info">System ready</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/telemetry-monitor.js"></script>
+</body>
+</html>

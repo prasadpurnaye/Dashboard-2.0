@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2.0 - Main Gauges</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>Dashboard 2.0</h1>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="nav-link active">Main Gauges</a>
+                <a href="/vms" class="nav-link">VMs</a>
+                <a href="/telemetry" class="nav-link">Telemetry</a>
+                <a href="/memory-dumps" class="nav-link">Memory Dumps</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Dashboard Section -->
+    <div class="dashboard">
+        <div class="dashboard-header">
+            <h2>Main Gauge Monitoring</h2>
+            <p class="dashboard-subtitle">Real-time System Monitoring</p>
+        </div>
+        <div class="gauges-container">
+            <div class="gauge-wrapper" id="gauge-wrapper-1">
+                <div class="gauge-title">Gauge 1</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-1"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-1">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-2">
+                <div class="gauge-title">Gauge 2</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-2"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-2">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-3">
+                <div class="gauge-title">Gauge 3</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-3"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-3">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-4">
+                <div class="gauge-title">Gauge 4</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-4"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-4">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-5">
+                <div class="gauge-title">Gauge 5</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-5"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-5">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-6">
+                <div class="gauge-title">Gauge 6</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-6"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-6">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-7">
+                <div class="gauge-title">Gauge 7</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-7"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-7">0.00000 °C</div>
+            </div>
+            <div class="gauge-wrapper" id="gauge-wrapper-8">
+                <div class="gauge-title">Gauge 8</div>
+                <div class="gauge-container">
+                    <canvas id="gauge-8"></canvas>
+                </div>
+                <div class="gauge-value-display" id="gauge-value-8">0.00000 °C</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

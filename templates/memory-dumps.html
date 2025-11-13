@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Dashboard 2.0">
+    <meta name="theme-color" content="#667eea">
+    <meta name="description" content="Memory Dump Management Dashboard">
+    <title>Dashboard 2.0 - Memory Dumps</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/memory-dumps.css">
+    <style>
+        /* Touch-friendly improvements */
+        @media (max-width: 768px) {
+            html, body {
+                touch-action: manipulation;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+        <div class="navbar-container">
+            <div class="navbar-top">
+                <div class="navbar-brand">
+                    <h1>Dashboard 2.0</h1>
+                </div>
+                <button class="hamburger-menu" id="hamburger-btn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="navbar-menu">
+                    <span class="hamburger-line" aria-hidden="true"></span>
+                    <span class="hamburger-line" aria-hidden="true"></span>
+                    <span class="hamburger-line" aria-hidden="true"></span>
+                </button>
+            </div>
+            <div class="navbar-menu" id="navbar-menu" role="menubar">
+                <a href="/" class="nav-link" role="menuitem">Main Gauges</a>
+                <a href="/vms" class="nav-link" role="menuitem">VMs</a>
+                <a href="/telemetry" class="nav-link" role="menuitem">Telemetry</a>
+                <a href="/memory-dumps" class="nav-link active" role="menuitem" aria-current="page">Memory Dumps</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Dashboard Section -->
+    <div class="dashboard" role="main">
+        <div class="dashboard-header">
+            <h2>Memory Dump Management</h2>
+            <p class="dashboard-subtitle">View, manage, and schedule memory dumps for virtual machines</p>
+        </div>
+
+        <!-- Control Panel Section -->
+        <div class="control-panel" role="region" aria-label="Dump control panel">
+            <div class="control-panel-header">
+                <h3>Dump Controls</h3>
+            </div>
+
+            <div class="control-grid">
+                <!-- Dump Trigger Section -->
+                <div class="control-section">
+                    <div class="section-title">
+                        <span class="icon">💾</span>
+                        Trigger Dump
+                    </div>
+                    
+                    <div class="vm-selector">
+                        <label for="vm-select">Select VM:</label>
+                        <div class="select-wrapper">
+                            <select id="vm-select" aria-label="Select virtual machine for memory dump">
+                                <option value="">Choose a VM...</option>
+                                <option value="all">All VMs</option>
+                            </select>
+                            <span class="select-arrow" aria-hidden="true">▼</span>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button id="dump-selected-btn" class="btn btn-primary" disabled aria-label="Trigger memory dump for selected VM">
+                            <span class="btn-icon" aria-hidden="true">💾</span>
+                            <span>Dump Selected VM</span>
+                        </button>
+                        <button id="dump-all-btn" class="btn btn-warning" aria-label="Trigger memory dump for all VMs">
+                            <span class="btn-icon" aria-hidden="true">💾</span>
+                            <span>Dump All VMs</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Section -->
+                <div class="control-section">
+                    <div class="section-title">
+                        <span class="icon">📊</span>
+                        Status Information
+                    </div>
+                    
+                    <div class="status-grid" role="status" aria-live="polite">
+                        <div class="status-card status-item">
+                            <span class="status-label">Total VMs:</span>
+                            <span class="status-value" id="total-vms" aria-label="Total virtual machines">0</span>
+                        </div>
+                        <div class="status-card status-item">
+                            <span class="status-label">Total Dumps:</span>
+                            <span class="status-value" id="total-dumps" aria-label="Total memory dumps">0</span>
+                        </div>
+                        <div class="status-card status-item">
+                            <span class="status-label">Last Dump:</span>
+                            <span class="status-value" id="last-dump-time" aria-label="Last dump timestamp">Never</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters Section -->
+                <div class="control-section">
+                    <div class="section-title">
+                        <span class="icon">🔍</span>
+                        Filters & Options
+                    </div>
+                    
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label class="filter-label" for="search-filter">Search:</label>
+                            <input 
+                                type="text" 
+                                id="search-filter" 
+                                class="filter-input" 
+                                placeholder="Search by VM or Hash..."
+                                aria-label="Search memory dumps by VM name or hash"
+                                autocomplete="off"
+                            >
+                        </div>
+                        
+                        <div class="filter-group">
+                            <label class="filter-label" for="date-filter">Date Filter:</label>
+                            <input 
+                                type="text" 
+                                id="date-filter" 
+                                class="filter-input" 
+                                placeholder="YYYY-MM-DD"
+                                aria-label="Filter by date"
+                                autocomplete="off"
+                            >
+                        </div>
+
+                        <div class="filter-buttons">
+                            <button id="reset-filters-btn" class="btn btn-secondary btn-small" aria-label="Reset all filters">
+                                <span class="btn-icon" aria-hidden="true">🔄</span>
+                                <span>Reset</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="auto-refresh-check" checked aria-label="Enable auto-refresh every 5 seconds">
+                            <span>Auto-refresh (5s)</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="show-compressed-check" checked aria-label="Show compressed file sizes">
+                            <span>Show compressed size</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Log Section -->
+        <div class="activity-section" role="region" aria-label="Activity log">
+            <div class="activity-header">
+                <h3>Activity Log</h3>
+                <span id="activity-count" class="activity-badge" aria-label="Number of activity items">0</span>
+            </div>
+            <div id="activity-log" class="activity-log" role="log" aria-live="polite" aria-label="Recent activity updates">
+                <div class="activity-empty">No activity yet. Trigger a dump to get started.</div>
+            </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <div class="table-section" role="region" aria-label="Memory dumps table">
+            <div class="table-header">
+                <h3>Recorded Memory Dumps (from InfluxDB3)</h3>
+                <div class="table-actions">
+                    <button id="refresh-table-btn" class="btn btn-secondary btn-small" aria-label="Refresh table data">
+                        <span class="btn-icon" aria-hidden="true">🔄</span>
+                        <span>Refresh</span>
+                    </button>
+                    <button id="export-csv-btn" class="btn btn-secondary btn-small" aria-label="Export table data as CSV">
+                        <span class="btn-icon" aria-hidden="true">📥</span>
+                        <span>Export CSV</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-wrapper" role="region" aria-label="Scrollable table">
+                <table id="dumps-table" class="dumps-table" role="table">
+                    <thead>
+                        <tr role="row">
+                            <th role="columnheader" scope="col">VM ID</th>
+                            <th role="columnheader" scope="col">VM Name</th>
+                            <th role="columnheader" scope="col">Timestamp</th>
+                            <th role="columnheader" scope="col">Duration (s)</th>
+                            <th role="columnheader" scope="col">SHA256 Hash</th>
+                            <th role="columnheader" scope="col">Dump Path</th>
+                            <th role="columnheader" scope="col">Size (Compressed)</th>
+                            <th role="columnheader" scope="col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dumps-tbody">
+                        <tr class="loading-row" role="row">
+                            <td colspan="8" class="loading-cell">
+                                <div class="spinner" aria-hidden="true"></div>
+                                Loading data from InfluxDB3...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <div class="pagination">
+                    <button id="prev-page-btn" class="btn btn-secondary btn-small" disabled aria-label="Go to previous page">← Previous</button>
+                    <span id="page-info" aria-live="polite">Page 1 of 1</span>
+                    <button id="next-page-btn" class="btn btn-secondary btn-small" disabled aria-label="Go to next page">Next →</button>
+                </div>
+                <div class="record-count" aria-live="polite">
+                    <span id="record-count-value">0</span> records
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container" role="region" aria-live="polite" aria-label="Notifications"></div>
+
+    <!-- Modal for dump details -->
+    <div id="dump-details-modal" class="modal" role="dialog" aria-labelledby="modal-title" aria-hidden="true">
+        <div class="modal-overlay" onclick="event.target.closest('.modal').style.display='none'"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Dump Details</h2>
+                <button class="modal-close" aria-label="Close dump details modal" onclick="document.getElementById('dump-details-modal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" id="dump-details-body">
+                <!-- Details will be populated here -->
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" id="copy-hash-btn" aria-label="Copy SHA256 hash to clipboard">Copy Hash</button>
+                <button class="btn btn-secondary modal-close-btn" aria-label="Close modal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Hamburger menu toggle functionality
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const navbarMenu = document.getElementById('navbar-menu');
+
+        // Toggle menu on button click
+        hamburgerBtn.addEventListener('click', function() {
+            const isExpanded = this.getAttribute('aria-expanded') === 'true';
+            this.setAttribute('aria-expanded', !isExpanded);
+            navbarMenu.classList.toggle('active');
+        });
+
+        // Close menu when a link is clicked
+        const navLinks = navbarMenu.querySelectorAll('.nav-link');
+        navLinks.forEach(link => {
+            link.addEventListener('click', function() {
+                hamburgerBtn.setAttribute('aria-expanded', 'false');
+                navbarMenu.classList.remove('active');
+            });
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(event) {
+            const isClickInsideNav = hamburgerBtn.contains(event.target) || navbarMenu.contains(event.target);
+            if (!isClickInsideNav && navbarMenu.classList.contains('active')) {
+                hamburgerBtn.setAttribute('aria-expanded', 'false');
+                navbarMenu.classList.remove('active');
+            }
+        });
+
+        // Close menu on escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && navbarMenu.classList.contains('active')) {
+                hamburgerBtn.setAttribute('aria-expanded', 'false');
+                navbarMenu.classList.remove('active');
+            }
+        });
+    </script>
+
+    <script src="/static/js/memory-dumps.js"></script>
+</body>
+</html>

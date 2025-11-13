@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2.0 - Virtual Machines</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>Dashboard 2.0</h1>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="nav-link">Main Gauges</a>
+                <a href="/vms" class="nav-link active">VMs</a>
+                <a href="/telemetry" class="nav-link">Telemetry</a>
+                <a href="/memory-dumps" class="nav-link">Memory Dumps</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- VM Dashboard Section -->
+    <div class="vm-dashboard">
+        <div class="vm-header">
+            <h2>Virtual Machines</h2>
+            <p class="vm-subtitle">Monitor your VMs in real-time</p>
+        </div>
+        <div class="vm-cards-scroll">
+            <!-- VM Cards will be generated here -->
+        </div>
+    </div>
+
+    <script src="/static/js/vm-dashboard.js"></script>
+</body>
+</html>
