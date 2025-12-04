@@ -18,6 +18,7 @@
                 <a href="/" class="nav-link active">Main Gauges</a>
                 <a href="/vms" class="nav-link">VMs</a>
                 <a href="/telemetry" class="nav-link">Telemetry</a>
+                <a href="/resource-monitoring" class="nav-link">Resource Monitoring</a>
                 <a href="/memory-dumps" class="nav-link">Memory Dumps</a>
             </div>
         </div>
@@ -27,65 +28,111 @@
     <div class="dashboard">
         <div class="dashboard-header">
             <h2>Main Gauge Monitoring</h2>
-            <p class="dashboard-subtitle">Real-time System Monitoring</p>
+            <p class="dashboard-subtitle">Real-time System Resource Monitoring</p>
         </div>
+
+        <!-- VM Selection Dropdown -->
+        <div class="vm-selector-container">
+            <label for="vm-dropdown">Select VM:</label>
+            <select id="vm-dropdown">
+                <option value="">-- Loading VMs --</option>
+            </select>
+            <span id="loading-indicator" class="loading-indicator" style="display: none;">⟳ Updating...</span>
+        </div>
+
+        <!-- Gauges Container -->
         <div class="gauges-container">
+            <!-- Network RX Bytes Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-1">
-                <div class="gauge-title">Gauge 1</div>
+                <div class="gauge-title">Network RX Rate</div>
+                <div class="gauge-subtitle">Rate of change (bytes/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-1"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-1">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-1">0.00° (rate)</div>
             </div>
+
+            <!-- Network TX Bytes Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-2">
-                <div class="gauge-title">Gauge 2</div>
+                <div class="gauge-title">Network TX Rate</div>
+                <div class="gauge-subtitle">Rate of change (bytes/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-2"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-2">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-2">0.00° (rate)</div>
             </div>
+
+            <!-- Disk Read Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-3">
-                <div class="gauge-title">Gauge 3</div>
+                <div class="gauge-title">Disk Read Rate</div>
+                <div class="gauge-subtitle">Rate of change (bytes/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-3"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-3">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-3">0.00° (rate)</div>
             </div>
+
+            <!-- Disk Write Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-4">
-                <div class="gauge-title">Gauge 4</div>
+                <div class="gauge-title">Disk Write Rate</div>
+                <div class="gauge-subtitle">Rate of change (bytes/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-4"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-4">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-4">0.00° (rate)</div>
             </div>
+
+            <!-- CPU User Time Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-5">
-                <div class="gauge-title">Gauge 5</div>
+                <div class="gauge-title">CPU User Time Rate</div>
+                <div class="gauge-subtitle">Rate of change (ns/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-5"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-5">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-5">0.00° (rate)</div>
             </div>
+
+            <!-- CPU System Time Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-6">
-                <div class="gauge-title">Gauge 6</div>
+                <div class="gauge-title">CPU System Time Rate</div>
+                <div class="gauge-subtitle">Rate of change (ns/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-6"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-6">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-6">0.00° (rate)</div>
             </div>
+
+            <!-- Memory RSS Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-7">
-                <div class="gauge-title">Gauge 7</div>
+                <div class="gauge-title">Memory RSS Rate</div>
+                <div class="gauge-subtitle">Rate of change (bytes/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-7"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-7">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-7">0.00° (rate)</div>
             </div>
+
+            <!-- Disk Read Requests Rate -->
             <div class="gauge-wrapper" id="gauge-wrapper-8">
-                <div class="gauge-title">Gauge 8</div>
+                <div class="gauge-title">Disk Read Requests Rate</div>
+                <div class="gauge-subtitle">Rate of change (reqs/s)</div>
                 <div class="gauge-container">
                     <canvas id="gauge-8"></canvas>
                 </div>
-                <div class="gauge-value-display" id="gauge-value-8">0.00000 °C</div>
+                <div class="gauge-value-display" id="gauge-value-8">0.00° (rate)</div>
             </div>
+        </div>
+
+        <!-- Gauge Descriptions -->
+        <div class="gauge-info-panel">
+            <h3>About These Gauges</h3>
+            <p>
+                Each gauge displays the <strong>rate of change</strong> (in degrees 0-90°) for VM resource metrics.
+                The angle is computed as: <code>atan((newValue - oldValue) / timeDelta) * 180 / π</code>
+            </p>
+            <p>
+                This shows how fast each metric is changing, providing insight into VM resource activity and trends.
+            </p>
         </div>
     </div>
 

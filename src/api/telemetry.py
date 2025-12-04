@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional
 import logging
 import requests
+from datetime import datetime
 
 from src.telemetry.collector import TelemetryCollector, TelemetryCollectorError
 from src.telemetry.influx_query import InfluxQuery
@@ -301,12 +302,111 @@ async def get_monitored_vms_from_influx() -> Dict[str, Any]:
 async def get_vm_stats(vm_id: str) -> Dict[str, Any]:
     """
     Get latest statistics for a specific VM from InfluxDB.
+    Returns all 26+ metrics with real data from InfluxDB or defaults if unavailable.
     
     Args:
         vm_id: The VM ID to get stats for
         
     Returns:
-        Latest metrics for the VM
+        Latest metrics for the VM (26 metrics across CPU/Memory, Network, Disk)
+    """
+    collector = get_collector()
+    if not collector:
+        raise HTTPException(
+            status_code=500,
+            detail="Telemetry collector not initialized"
+        )
+    
+    try:
+        # Default metrics structure with all 26 fields
+        metrics = {
+            # VM Info
+            "state": "running",
+            "cpus": 0,
+            "cputime": 0,
+            
+            # CPU & Memory (11 metrics)
+            "timeusr": 0,
+            "timesys": 0,
+            "memactual": 0,
+            "memrss": 0,
+            "memavailable": 0,
+            "memusable": 0,
+            "memswap_in": 0,
+            "memswap_out": 0,
+            "memmajor_fault": 0,
+            "memminor_fault": 0,
+            "memdisk_cache": 0,
+            
+            # Network (8 metrics)
+            "net_rxbytes": 0,
+            "net_rxpackets": 0,
+            "net_rxerrors": 0,
+            "net_rxdrops": 0,
+            "net_txbytes": 0,
+            "net_txpackets": 0,
+            "net_txerrors": 0,
+            "net_txdrops": 0,
+            
+            # Disk (5 metrics)
+            "disk_rd_req": 0,
+            "disk_rd_bytes": 0,
+            "disk_wr_reqs": 0,
+            "disk_wr_bytes": 0,
+            "disk_errors": 0,
+        }
+        
+        try:
+            influx_query = InfluxQuery(
+                collector.config.influx_url,
+                collector.config.influx_db,
+                collector.config.influx_token
+            )
+            
+            # Try to get actual metrics from InfluxDB
+            db_metrics = influx_query.get_vm_metrics(vm_id)
+            if db_metrics:
+                logger.info(f"Retrieved {len(db_metrics)} fields from InfluxDB for VM {vm_id}")
+                metrics.update(db_metrics)
+            else:
+                logger.warning(f"No metrics from InfluxDB for VM {vm_id}, using defaults")
+        except Exception as e:
+            logger.error(f"Could not retrieve metrics from InfluxDB for VM {vm_id}: {str(e)}", exc_info=True)
+        
+        # Try to get VM info from libvirt if available
+        try:
+            if collector.kvm and collector.kvm.is_connected():
+                vms = collector.kvm.get_live_vms()
+                for vm in vms:
+                    if str(vm.get("id")) == str(vm_id):
+                        metrics["state"] = vm.get("state", "unknown")
+                        metrics["cpus"] = vm.get("cpu_count", 0)
+                        metrics["cputime"] = vm.get("cputime", 0)
+                        break
+        except Exception as e:
+            logger.debug(f"Could not get VM info from libvirt: {str(e)}")
+        
+        return {
+            "vm_id": vm_id,
+            "metrics": metrics
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting VM stats: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get VM stats: {str(e)}"
+        )
+
+
+@router.get("/vm-telemetry")
+async def get_vm_telemetry() -> Dict[str, Any]:
+    """
+    Get real-time telemetry for all VMs with rate-of-change calculations.
+    Falls back to live VM data if no historical telemetry available.
+    
+    Returns:
+        List of VMs with current metrics and rate-of-change values
     """
     collector = get_collector()
     if not collector:
@@ -322,18 +422,85 @@ async def get_vm_stats(vm_id: str) -> Dict[str, Any]:
             collector.config.influx_token
         )
         
-        metrics = influx_query.get_vm_metrics(vm_id)
+        # Get live VMs from collector or create fresh connection
+        vms = []
+        if collector.kvm and collector.kvm.is_connected():
+            try:
+                vms = collector.kvm.get_live_vms()
+                logger.debug(f"Got {len(vms)} VMs from collector KVM")
+            except Exception as e:
+                logger.warning(f"Failed to get VMs from collector KVM: {str(e)}")
+        
+        # Fallback: create fresh KVM connection if needed
+        if not vms:
+            try:
+                from src.telemetry.kvm_connector import KVMConnector
+                logger.info("Creating fresh KVM connection for telemetry")
+                kvm_conn = KVMConnector(
+                    collector.config.libvirt_uri,
+                    collector.config.libvirt_timeout
+                )
+                if kvm_conn.connect():
+                    vms = kvm_conn.get_live_vms()
+                    kvm_conn.disconnect()
+                    logger.debug(f"Got {len(vms)} VMs from fresh KVM connection")
+                else:
+                    logger.warning("Failed to connect with fresh KVM connection")
+            except Exception as e:
+                logger.warning(f"Error creating fresh KVM connection: {str(e)}")
+        
+        vms_serializable = [
+            {k: v for k, v in vm.items() if k != "dom"}
+            for vm in vms
+        ]
+        
+        logger.debug(f"VM Telemetry: Processing {len(vms_serializable)} VMs")
+        
+        # Enhance each VM with telemetry data and rates
+        vm_telemetry = []
+        for vm in vms_serializable:
+            vm_id = str(vm.get("id"))
+            
+            # Try to get telemetry from InfluxDB
+            telemetry = influx_query.get_vm_telemetry_with_rates(vm_id)
+            
+            # If no telemetry data available, use defaults based on live VM info
+            if not telemetry or all(v == 0 for v in telemetry.values() if isinstance(v, (int, float))):
+                # Calculate basic metrics from VM info
+                memory_gb = (vm.get("memory_max", 0) or 0) / 1024 / 1024
+                memory_used_gb = (vm.get("memory_used", 0) or 0) / 1024 / 1024
+                memory_percent = (memory_used_gb / memory_gb * 100) if memory_gb > 0 else 0
+                
+                telemetry = {
+                    "cpu_usage_percent": 0.0,
+                    "memory_usage_percent": min(100.0, memory_percent),
+                    "disk_read_bytes": 0,
+                    "disk_write_bytes": 0,
+                    "network_rx_bytes": 0,
+                    "network_tx_bytes": 0,
+                    "cpu_rate": 0.0,
+                    "memory_rate": 0.0,
+                    "disk_read_rate": 0.0,
+                    "disk_write_rate": 0.0,
+                    "network_rx_rate": 0.0,
+                    "network_tx_rate": 0.0,
+                }
+            
+            # Merge VM info with telemetry
+            vm_data = {**vm, **telemetry}
+            vm_telemetry.append(vm_data)
         
         return {
-            "vm_id": vm_id,
-            "metrics": metrics
+            "count": len(vm_telemetry),
+            "timestamp": datetime.utcnow().isoformat(),
+            "vms": vm_telemetry
         }
     
     except Exception as e:
-        logger.error(f"Error getting VM stats: {str(e)}")
+        logger.error(f"Error getting VM telemetry: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get VM stats: {str(e)}"
+            detail=f"Failed to get VM telemetry: {str(e)}"
         )
 
 

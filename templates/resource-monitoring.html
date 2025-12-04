@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2.0 - Resource Monitoring</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/resource-monitoring.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>Dashboard 2.0</h1>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="nav-link">Main Gauges</a>
+                <a href="/vms" class="nav-link">VMs</a>
+                <a href="/telemetry" class="nav-link">Telemetry</a>
+                <a href="/resource-monitoring" class="nav-link active">Resource Monitoring</a>
+                <a href="/memory-dumps" class="nav-link">Memory Dumps</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="resource-monitoring-container">
+        <!-- Header Section -->
+        <div class="monitoring-header">
+            <h2>Resource Monitoring</h2>
+            <p class="subtitle">Real-time VM resource utilization and performance metrics</p>
+        </div>
+
+        <!-- VM Selection Panel -->
+        <div class="vm-selection-panel">
+            <div class="selection-group">
+                <label for="vm-dropdown">Select VM:</label>
+                <select id="vm-dropdown">
+                    <option value="">-- Loading VMs --</option>
+                </select>
+                <button id="refresh-btn" class="btn btn-primary">🔄 Refresh Now</button>
+            </div>
+            <div class="selection-info">
+                <span id="vm-info-text" class="info-text"></span>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="loading-state" style="display: none;">
+            <p>⏳ Loading VM data...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="error-state" style="display: none;">
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Main Content Area (hidden until VM selected) -->
+        <div id="content-area" class="content-area" style="display: none;">
+
+            <!-- Summary Panel -->
+            <div class="summary-panel">
+                <div class="summary-card">
+                    <h4>VM State</h4>
+                    <p id="metric-state" class="metric-value">--</p>
+                </div>
+                <div class="summary-card">
+                    <h4>CPU Cores</h4>
+                    <p id="metric-cpus" class="metric-value">--</p>
+                </div>
+                <div class="summary-card">
+                    <h4>CPU Time</h4>
+                    <p id="metric-cputime" class="metric-value">-- ns</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Last Update</h4>
+                    <p id="metric-last-update" class="metric-value">--</p>
+                </div>
+            </div>
+
+            <!-- Tabs for different metric categories -->
+            <div class="tabs-container">
+                <div class="tabs-header">
+                    <button class="tab-btn active" data-tab="cpu-memory">CPU & Memory</button>
+                    <button class="tab-btn" data-tab="network">Network</button>
+                    <button class="tab-btn" data-tab="disk">Disk</button>
+                    <button class="tab-btn" data-tab="devices">Per-Device</button>
+                </div>
+
+                <!-- CPU & Memory Tab -->
+                <div id="cpu-memory-tab" class="tab-content active">
+                    <div class="metrics-grid">
+                        <!-- CPU Metrics -->
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>User CPU Time</h4>
+                                <span class="metric-label">timeusr (ns)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-timeusr" class="current-value">0 ns</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-timeusr"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>System CPU Time</h4>
+                                <span class="metric-label">timesys (ns)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-timesys" class="current-value">0 ns</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-timesys"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Memory Metrics -->
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Actual Memory</h4>
+                                <span class="metric-label">memactual (KB)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memactual" class="current-value">0 KB</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memactual"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Memory RSS</h4>
+                                <span class="metric-label">memrss (KB)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memrss" class="current-value">0 KB</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memrss"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Available Memory</h4>
+                                <span class="metric-label">memavailable (KB)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memavailable" class="current-value">0 KB</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memavailable"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Usable Memory</h4>
+                                <span class="metric-label">memusable (KB)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memusable" class="current-value">0 KB</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memusable"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Swap In</h4>
+                                <span class="metric-label">memswap_in</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memswap_in" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memswap_in"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Swap Out</h4>
+                                <span class="metric-label">memswap_out</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memswap_out" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memswap_out"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Major Faults</h4>
+                                <span class="metric-label">memmajor_fault</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memmajor_fault" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memmajor_fault"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Minor Faults</h4>
+                                <span class="metric-label">memminor_fault</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memminor_fault" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memminor_fault"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Cache</h4>
+                                <span class="metric-label">memdisk_cache (KB)</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-memdisk_cache" class="current-value">0 KB</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-memdisk_cache"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Network Tab -->
+                <div id="network-tab" class="tab-content">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>RX Bytes</h4>
+                                <span class="metric-label">net_rxbytes</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_rxbytes" class="current-value">0 B</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_rxbytes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>RX Packets</h4>
+                                <span class="metric-label">net_rxpackets</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_rxpackets" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_rxpackets"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>RX Errors</h4>
+                                <span class="metric-label">net_rxerrors</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_rxerrors" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_rxerrors"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>RX Drops</h4>
+                                <span class="metric-label">net_rxdrops</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_rxdrops" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_rxdrops"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>TX Bytes</h4>
+                                <span class="metric-label">net_txbytes</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_txbytes" class="current-value">0 B</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_txbytes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>TX Packets</h4>
+                                <span class="metric-label">net_txpackets</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_txpackets" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_txpackets"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>TX Errors</h4>
+                                <span class="metric-label">net_txerrors</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_txerrors" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_txerrors"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>TX Drops</h4>
+                                <span class="metric-label">net_txdrops</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-net_txdrops" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-net_txdrops"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disk Tab -->
+                <div id="disk-tab" class="tab-content">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Read Requests</h4>
+                                <span class="metric-label">disk_rd_req</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-disk_rd_req" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-disk_rd_req"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Read Bytes</h4>
+                                <span class="metric-label">disk_rd_bytes</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-disk_rd_bytes" class="current-value">0 B</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-disk_rd_bytes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Write Requests</h4>
+                                <span class="metric-label">disk_wr_reqs</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-disk_wr_reqs" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-disk_wr_reqs"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Write Bytes</h4>
+                                <span class="metric-label">disk_wr_bytes</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-disk_wr_bytes" class="current-value">0 B</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-disk_wr_bytes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h4>Disk Errors</h4>
+                                <span class="metric-label">disk_errors</span>
+                            </div>
+                            <div class="metric-display">
+                                <p id="value-disk_errors" class="current-value">0</p>
+                                <div class="graph-container">
+                                    <canvas id="graph-disk_errors"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Per-Device Tab -->
+                <div id="devices-tab" class="tab-content">
+                    <div id="devices-container" class="devices-container">
+                        <div class="devices-placeholder">
+                            <h3>Per-Device Metrics</h3>
+                            <p>Individual metrics for network interfaces and storage devices</p>
+                            <div class="device-section">
+                                <h4>Network Interfaces</h4>
+                                <div id="network-devices" class="device-grid">
+                                    <!-- Per-NIC metrics will be shown here -->
+                                </div>
+                            </div>
+                            <div class="device-section">
+                                <h4>Storage Devices</h4>
+                                <div id="storage-devices" class="device-grid">
+                                    <!-- Per-disk metrics will be shown here -->
+                                </div>
+                            </div>
+                            <p class="info-text">ℹ️ Per-device metrics are currently being collected. Individual device data will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="/static/js/resource-monitoring.js"></script>
+</body>
+</html>

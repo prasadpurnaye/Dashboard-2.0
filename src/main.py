@@ -58,6 +58,11 @@ async def read_memory_dumps():
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "memory-dumps.html")
     return FileResponse(template_path)
 
+@app.get("/resource-monitoring")
+async def read_resource_monitoring():
+    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "resource-monitoring.html")
+    return FileResponse(template_path)
+
 # Initialize telemetry collector on startup
 @app.on_event("startup")
 async def startup_event():

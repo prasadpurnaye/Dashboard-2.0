@@ -90,6 +90,61 @@ body {
     font-size: 1.1em;
 }
 
+/* VM Selector Container */
+.vm-selector-container {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.vm-selector-container label {
+    font-weight: 600;
+    color: #333;
+    font-size: 1.05em;
+}
+
+.vm-selector-container select {
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1em;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    min-width: 250px;
+    transition: all 0.3s ease;
+}
+
+.vm-selector-container select:hover {
+    border-color: #667eea;
+}
+
+.vm-selector-container select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.loading-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #667eea;
+    font-weight: 600;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 .gauges-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -117,8 +172,16 @@ body {
     font-size: 1.3em;
     font-weight: 600;
     color: #333;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+.gauge-subtitle {
+    font-size: 0.85em;
+    color: #999;
     margin-bottom: 15px;
     text-align: center;
+    font-style: italic;
 }
 
 .gauge-container {
@@ -141,11 +204,49 @@ body {
     color: #667eea;
     margin-top: 15px;
     text-align: center;
+    font-family: 'Courier New', monospace;
 }
 
 .gauge-wrapper.status-normal {
     border-left: 5px solid #4caf50;
 }
+
+/* Gauge Info Panel */
+.gauge-info-panel {
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+    border-radius: 10px;
+    padding: 25px;
+    margin-top: 40px;
+    border: 1px solid #e5e7eb;
+}
+
+.gauge-info-panel h3 {
+    color: #333;
+    font-size: 1.2em;
+    margin-bottom: 15px;
+}
+
+.gauge-info-panel p {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 12px;
+    font-size: 0.95em;
+}
+
+.gauge-info-panel p:last-child {
+    margin-bottom: 0;
+}
+
+.gauge-info-panel code {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    color: #d63384;
+    font-size: 0.9em;
+}
+
 
 /* VM Dashboard Styles */
 .vm-dashboard {
