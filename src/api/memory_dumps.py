@@ -2,6 +2,7 @@
 Memory Dumps API Module
 Handles memory dump triggers and InfluxDB3 queries for dump records.
 Uses same HTTP-based InfluxDB client as telemetry module for consistency.
+Integrates with memdump_service running at 10.10.0.94:5001 for remote dumps.
 """
 
 import logging
@@ -10,7 +11,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 import os
-import subprocess
 import json
 import csv
 import io
@@ -20,15 +20,12 @@ from src.telemetry.influx_query import InfluxQuery
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/memory-dumps", tags=["memory-dumps"])
 
+# Configuration for memdump_service
+MEMDUMP_SERVICE_URL = os.environ.get("MEMDUMP_SERVICE_URL", "http://10.10.0.94:5001")
+MEMDUMP_SERVICE_TIMEOUT = float(os.environ.get("MEMDUMP_SERVICE_TIMEOUT", "30"))
+
 # Global state for tracking active dump operations
 active_dumps = {}
-
-
-def _get_memdump_script_path():
-    """Get the path to the memdump.py script"""
-    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    script_path = os.path.join(base_path, "..", "memdump.py")
-    return os.path.abspath(script_path)
 
 
 def _get_influx_query_client() -> Optional[InfluxQuery]:
@@ -124,57 +121,123 @@ def _normalize_numeric(record: Dict[str, Any], numeric_int: List[str], numeric_f
 # ---------------- Background dump trigger ----------------
 
 async def _trigger_dump_background(vm_ids: List[str]):
-    """Background task to trigger memory dumps"""
+    """
+    Background task to trigger memory dumps via memdump_service HTTP API.
+    Polls the service for status until completion.
+    """
     try:
-        script_path = _get_memdump_script_path()
+        service_url = MEMDUMP_SERVICE_URL.rstrip("/")
+        
+        logger.info(f"🚀 Triggering memory dump for VMs: {vm_ids}")
+        logger.info(f"   Service URL: {service_url}/api/dumps")
 
-        if not os.path.exists(script_path):
-            logger.warning(f"memdump.py script not found at {script_path}, skipping dump")
+        # Step 1: POST request to trigger dumps
+        payload = {"vms": vm_ids}
+        response = requests.post(
+            f"{service_url}/api/dumps",
+            json=payload,
+            timeout=MEMDUMP_SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            error_msg = f"memdump_service returned {response.status_code}: {response.text[:200]}"
+            logger.error(f"❌ {error_msg}")
+            active_dumps['last_trigger'] = {
+                'timestamp': datetime.now().isoformat(),
+                'vm_ids': vm_ids,
+                'status': 'failed',
+                'error': error_msg
+            }
             return
-
+        
+        trigger_response = response.json()
+        logger.info(f"✓ Dump trigger accepted: {trigger_response}")
+        
         # Record start time
         start_time = datetime.now()
         active_dumps['last_trigger'] = {
             'timestamp': start_time.isoformat(),
             'vm_ids': vm_ids,
-            'status': 'in_progress'
+            'status': 'in_progress',
+            'trigger_response': trigger_response
         }
-
-        logger.info(f"🚀 Starting memory dump for VMs: {vm_ids}")
-
-        # Execute memdump.py script with VM IDs
-        try:
-            result = subprocess.run(
-                ['python3', script_path] + vm_ids,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout per dump
-            )
-
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-
-            if result.returncode == 0:
-                logger.info(f"✓ Memory dump completed successfully in {duration:.2f}s")
-                active_dumps['last_trigger']['status'] = 'completed'
-                active_dumps['last_trigger']['duration'] = duration
-            else:
-                logger.error(f"Memory dump failed with return code {result.returncode}")
-                logger.error(f"stdout: {result.stdout}")
-                logger.error(f"stderr: {result.stderr}")
-                active_dumps['last_trigger']['status'] = 'failed'
-                active_dumps['last_trigger']['error'] = result.stderr
-
-        except subprocess.TimeoutExpired:
-            logger.error("Memory dump timed out after 5 minutes")
-            active_dumps['last_trigger']['status'] = 'timeout'
-        except Exception as e:
-            logger.exception(f"Unexpected error during memory dump: {e}")
-            active_dumps['last_trigger']['status'] = 'error'
-            active_dumps['last_trigger']['error'] = str(e)
-
+        
+        # Step 2: Poll for status of each VM
+        import time
+        max_wait_sec = 3600  # 1 hour max wait
+        poll_interval_sec = 5
+        elapsed = 0
+        
+        all_completed = False
+        while elapsed < max_wait_sec:
+            try:
+                # Get status for all VMs
+                status_response = requests.get(
+                    f"{service_url}/api/dumps",
+                    timeout=MEMDUMP_SERVICE_TIMEOUT
+                )
+                
+                if status_response.status_code != 200:
+                    logger.warning(f"Status poll returned {status_response.status_code}")
+                    time.sleep(poll_interval_sec)
+                    elapsed += poll_interval_sec
+                    continue
+                
+                dump_statuses = status_response.json()
+                
+                # Check if all requested VMs are done
+                all_completed = True
+                for vm_id in vm_ids:
+                    vm_status = dump_statuses.get(vm_id)
+                    if not vm_status:
+                        logger.debug(f"  {vm_id}: no status yet")
+                        all_completed = False
+                    elif vm_status.get('state') in ('running', 'queued'):
+                        logger.debug(f"  {vm_id}: {vm_status.get('state')} ({vm_status.get('progress', 0):.1f}%)")
+                        all_completed = False
+                    elif vm_status.get('state') == 'completed':
+                        logger.info(f"  ✓ {vm_id}: completed in {vm_status.get('duration_sec', 0):.2f}s")
+                    elif vm_status.get('state') == 'failed':
+                        logger.error(f"  ✗ {vm_id}: failed - {vm_status.get('message', 'unknown error')}")
+                
+                if all_completed:
+                    logger.info("✓ All dumps completed!")
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    active_dumps['last_trigger']['status'] = 'completed'
+                    active_dumps['last_trigger']['duration'] = duration
+                    active_dumps['last_trigger']['dump_statuses'] = dump_statuses
+                    return
+                
+                time.sleep(poll_interval_sec)
+                elapsed += poll_interval_sec
+                
+            except Exception as e:
+                logger.warning(f"Error polling dump status: {e}")
+                time.sleep(poll_interval_sec)
+                elapsed += poll_interval_sec
+        
+        # Timeout reached
+        logger.error(f"Dump monitoring timed out after {max_wait_sec}s")
+        active_dumps['last_trigger']['status'] = 'timeout'
+        
+    except requests.ConnectionError as e:
+        error_msg = f"Cannot connect to memdump_service at {MEMDUMP_SERVICE_URL}: {e}"
+        logger.error(f"❌ {error_msg}")
+        active_dumps['last_trigger'] = {
+            'timestamp': datetime.now().isoformat(),
+            'vm_ids': vm_ids,
+            'status': 'error',
+            'error': error_msg
+        }
     except Exception as e:
         logger.exception(f"Background dump task failed: {e}")
+        active_dumps['last_trigger'] = {
+            'timestamp': datetime.now().isoformat(),
+            'vm_ids': vm_ids,
+            'status': 'error',
+            'error': str(e)
+        }
 
 
 @router.post("/trigger")
@@ -183,18 +246,25 @@ async def trigger_dump(
     background_tasks: BackgroundTasks
 ):
     """
-    Trigger memory dumps for specified VMs
+    Trigger memory dumps for specified VMs via memdump_service.
+    
+    Forwards dump request to memdump_service running at MEMDUMP_SERVICE_URL.
 
-    Request body:
+    Request body (either format accepted):
     {
         "vm_ids": ["vm1", "vm2", ...]
     }
+    OR
+    {
+        "vms": ["vm1", "vm2", ...]
+    }
     """
     try:
-        vm_ids = request_body.get('vm_ids', [])
+        # Accept both 'vm_ids' and 'vms' parameter names
+        vm_ids = request_body.get('vm_ids') or request_body.get('vms') or []
 
         if not vm_ids:
-            raise HTTPException(status_code=400, detail="No VM IDs specified")
+            raise HTTPException(status_code=400, detail="No VMs specified. Use 'vm_ids' or 'vms' parameter")
 
         logger.info(f"📋 Dump request received for {len(vm_ids)} VMs: {vm_ids}")
 
@@ -210,6 +280,101 @@ async def trigger_dump(
 
     except Exception as e:
         logger.error(f"Error in trigger_dump: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/status")
+async def get_dump_status():
+    """
+    Get status of active dump operations from memdump_service.
+    
+    Returns status from the remote memdump_service for all VMs that have active dumps.
+    """
+    try:
+        service_url = MEMDUMP_SERVICE_URL.rstrip("/")
+        
+        # Query memdump_service for all dump statuses
+        response = requests.get(
+            f"{service_url}/api/dumps",
+            timeout=MEMDUMP_SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            logger.warning(f"memdump_service /api/dumps returned {response.status_code}")
+            return {
+                "service": service_url,
+                "status": "unavailable",
+                "error": f"Service returned {response.status_code}"
+            }
+        
+        dump_statuses = response.json()
+        
+        return {
+            "service": service_url,
+            "status": "ok",
+            "active_dumps": dump_statuses,
+            "last_trigger": active_dumps.get('last_trigger'),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except requests.ConnectionError as e:
+        logger.warning(f"Cannot reach memdump_service: {e}")
+        return {
+            "service": MEMDUMP_SERVICE_URL,
+            "status": "unavailable",
+            "error": f"Connection failed: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.exception(f"Error checking dump status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error checking dump status: {str(e)}")
+
+
+@router.get("/status/{vm_id}")
+async def get_dump_status_for_vm(vm_id: str):
+    """
+    Get status of a specific VM's dump from memdump_service.
+    
+    Returns:
+    - dump_id: unique identifier for this dump operation
+    - state: "queued", "running", "completed", or "failed"
+    - progress: 0-100 percentage (for running dumps)
+    - message: status message
+    - started_at: timestamp when dump started
+    - finished_at: timestamp when dump completed/failed
+    - dump_path: path to the memory dump file
+    - duration_sec: how long the dump took
+    """
+    try:
+        service_url = MEMDUMP_SERVICE_URL.rstrip("/")
+        
+        # Query memdump_service for specific VM status
+        response = requests.get(
+            f"{service_url}/api/dumps/{vm_id}",
+            timeout=MEMDUMP_SERVICE_TIMEOUT
+        )
+        
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No dump status for VM '{vm_id}'"
+            )
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"memdump_service error: {response.text[:200]}"
+            )
+        
+        return response.json()
+        
+    except requests.ConnectionError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot connect to memdump_service: {str(e)}"
+        )
+    except Exception as e:
+        logger.exception(f"Error getting dump status for VM {vm_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

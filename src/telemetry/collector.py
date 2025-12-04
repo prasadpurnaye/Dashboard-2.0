@@ -39,9 +39,6 @@ class TelemetryCollector:
         self._running = False
         self._stop_event = threading.Event()
         
-        # Feature tracking (for rate computation)
-        self._prev_metrics: Dict[str, Dict[str, Any]] = {}
-        
         # Metrics for monitoring
         self.stats = {
             "started_at": None,
@@ -188,54 +185,19 @@ class TelemetryCollector:
         """Collect metrics for a single VM"""
         lines = []
         
-        # Basic VM info line
-        tags = {
+        # Base tags for all measurements
+        base_tags = {
             "VMID": str(vm["id"]),
             "name": vm["name"],
             "uuid": vm["uuid"],
         }
         
-        fields = {
-            "state": vm["state"],
-            "cpu_count": vm["cpu_count"],
-            "memory_max_kb": vm["memory_max"],
-            "memory_used_kb": vm["memory_used"],
-            "cputime_ns": vm["cputime"],
-        }
-        
-        lines.append(self._line_protocol(
-            "vm_metrics",
-            tags,
-            fields,
-            ts
-        ))
-        
-        # Compute rate features
-        vm_key = vm["name"]
-        prev = self._prev_metrics.get(vm_key)
-        
-        if prev:
-            dt_sec = (ts - prev["ts"]).total_seconds()
-            if dt_sec > 0:
-                # Example: memory trend
-                mem_delta = vm["memory_used"] - prev["memory_used"]
-                mem_rate = mem_delta / dt_sec
-                
-                lines.append(self._line_protocol(
-                    "vm_features",
-                    tags,
-                    {
-                        "memory_rate_kb_per_sec": mem_rate,
-                        "memory_angle_deg": math.degrees(math.atan(mem_rate + 1e-12))
-                    },
-                    ts
-                ))
-        
-        # Store current snapshot
-        self._prev_metrics[vm_key] = {
-            "ts": ts,
-            "memory_used": vm["memory_used"],
-        }
+        # Collect device metrics (vm_devices and vm_totals)
+        if "dom" in vm:
+            try:
+                self._collect_device_metrics(vm, base_tags, ts, lines)
+            except Exception as e:
+                logger.warning(f"Error collecting device metrics for {vm['name']}: {str(e)}")
         
         # Enqueue all lines to InfluxDB
         if self.influx:
@@ -243,6 +205,128 @@ class TelemetryCollector:
                 self.influx.enqueue(line)
             # Track metrics written
             self.stats["total_metrics_written"] += len(lines)
+    
+    def _collect_device_metrics(
+        self,
+        vm: Dict[str, Any],
+        base_tags: Dict[str, str],
+        ts: dt.datetime,
+        lines: list
+    ) -> None:
+        """
+        Collect per-device metrics (network interfaces and disk devices).
+        Adds vm_devices and vm_totals measurements.
+        """
+        dom = vm.get("dom")
+        if not dom:
+            return
+        
+        try:
+            # Get devices
+            nics, disks = self.kvm.get_devices_for_vm(dom)
+            
+            # Network interface metrics
+            net_totals = {
+                "net_rxbytes": 0,
+                "net_rxpackets": 0,
+                "net_rxerrors": 0,
+                "net_rxdrops": 0,
+                "net_txbytes": 0,
+                "net_txpackets": 0,
+                "net_txerrors": 0,
+                "net_txdrops": 0,
+            }
+            
+            for nic in nics:
+                try:
+                    nic_stats = self.kvm.get_interface_stats(dom, nic)
+                    
+                    # Create per-device line
+                    dev_tags = base_tags.copy()
+                    dev_tags["devtype"] = "nic"
+                    dev_tags["device"] = nic
+                    
+                    lines.append(self._line_protocol(
+                        "vm_devices",
+                        dev_tags,
+                        nic_stats,
+                        ts
+                    ))
+                    
+                    # Accumulate totals
+                    for key in net_totals:
+                        short_key = key.replace("net_", "")
+                        net_totals[key] += nic_stats.get(short_key, 0)
+                
+                except Exception as e:
+                    logger.warning(f"Error collecting stats for NIC {nic}: {str(e)}")
+            
+            # Block device metrics
+            disk_totals = {
+                "disk_rd_req": 0,
+                "disk_rd_bytes": 0,
+                "disk_wr_reqs": 0,
+                "disk_wr_bytes": 0,
+                "disk_errors": 0,
+            }
+            
+            for disk in disks:
+                try:
+                    disk_stats = self.kvm.get_block_stats(dom, disk)
+                    
+                    # Create per-device line
+                    dev_tags = base_tags.copy()
+                    dev_tags["devtype"] = "disk"
+                    dev_tags["device"] = disk
+                    
+                    lines.append(self._line_protocol(
+                        "vm_devices",
+                        dev_tags,
+                        disk_stats,
+                        ts
+                    ))
+                    
+                    # Accumulate totals
+                    disk_totals["disk_rd_req"] += disk_stats.get("rd_req", 0)
+                    disk_totals["disk_rd_bytes"] += disk_stats.get("rd_bytes", 0)
+                    disk_totals["disk_wr_reqs"] += disk_stats.get("wr_reqs", 0)
+                    disk_totals["disk_wr_bytes"] += disk_stats.get("wr_bytes", 0)
+                    disk_totals["disk_errors"] += disk_stats.get("errors", 0)
+                
+                except Exception as e:
+                    logger.warning(f"Error collecting stats for disk {disk}: {str(e)}")
+            
+            # Get extended memory stats
+            mem_stats = self.kvm.get_memory_stats(dom)
+            
+            # Get CPU time breakdown
+            cpu_stats = self.kvm.get_cpu_stats(dom)
+            
+            # Build vm_totals line with all aggregated data
+            totals_fields = {
+                # Network totals
+                **net_totals,
+                # Disk totals
+                **disk_totals,
+                # Memory extended metrics
+                **mem_stats,
+                # CPU breakdown
+                **cpu_stats,
+                # State and basic info
+                "state": vm["state"] if isinstance(vm["state"], int) else (1 if vm["state"] == "running" else 0),
+                "cpus": vm["cpu_count"],
+                "cputime": vm["cputime"],
+            }
+            
+            lines.append(self._line_protocol(
+                "vm_totals",
+                base_tags,
+                totals_fields,
+                ts
+            ))
+        
+        except Exception as e:
+            logger.warning(f"Error in _collect_device_metrics: {str(e)}")
     
     def _line_protocol(
         self,

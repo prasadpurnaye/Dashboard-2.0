@@ -5,6 +5,7 @@ Handles libvirt connections and VM management
 
 import libvirt
 import xml.etree.ElementTree as ET
+import time
 from typing import List, Dict, Any, Tuple, Optional
 import logging
 
@@ -19,6 +20,9 @@ class KVMConnectorError(Exception):
 class KVMConnector:
     """Manages connections to libvirt and retrieves VM information"""
     
+    # Device cache for per-VM interface and disk device lists
+    DEVICE_CACHE_TTL = 300  # seconds
+    
     def __init__(self, uri: str, timeout: float = 30.0):
         """
         Initialize KVM connector.
@@ -31,6 +35,8 @@ class KVMConnector:
         self.timeout = timeout
         self._conn: Optional[libvirt.virConnect] = None
         self._libvirt_compat = self._setup_libvirt_compat()
+        # Device cache: {vm_id: {"ts": time, "nics": [...], "disks": [...]}}
+        self._device_cache: Dict[int, Dict[str, Any]] = {}
     
     def _setup_libvirt_compat(self) -> Dict[str, int]:
         """Setup libvirt compatibility shim for different versions"""
@@ -100,7 +106,7 @@ class KVMConnector:
         Get list of live VMs with basic information.
         
         Returns:
-            List of VM info dicts with keys: id, name, uuid, state, cpu_count, memory
+            List of VM info dicts with keys: id, name, uuid, state, cpu_count, memory, dom
         """
         if not self.is_connected():
             raise KVMConnectorError("Not connected to libvirt")
@@ -110,7 +116,9 @@ class KVMConnector:
             for dom_id in self._conn.listDomainsID():
                 try:
                     dom = self._conn.lookupByID(dom_id)
-                    vms.append(self._extract_vm_info(dom))
+                    vm_info = self._extract_vm_info(dom)
+                    vm_info["dom"] = dom  # Include domain object for extended stats
+                    vms.append(vm_info)
                 except libvirt.libvirtError as e:
                     logger.warning(f"Error getting VM {dom_id}: {str(e)}")
                     continue
@@ -189,11 +197,21 @@ class KVMConnector:
     def get_devices_for_vm(self, dom: libvirt.virDomain) -> Tuple[List[str], List[str]]:
         """
         Extract network interfaces and disk devices from VM XML definition.
+        Uses caching to avoid repeated XML parsing.
         
         Returns:
             Tuple of (network_interfaces, disk_devices)
         """
         try:
+            dom_id = dom.ID()
+            now = time.time()
+            
+            # Check cache
+            cached = self._device_cache.get(dom_id)
+            if cached and now - cached["ts"] < self.DEVICE_CACHE_TTL:
+                return cached["nics"], cached["disks"]
+            
+            # Parse devices from XML
             root = ET.fromstring(dom.XMLDesc(0))
             nics, disks = [], []
             
@@ -211,7 +229,141 @@ class KVMConnector:
                 if tgt is not None and "dev" in tgt.attrib:
                     disks.append(tgt.attrib["dev"])
             
+            # Cache the result
+            self._device_cache[dom_id] = {
+                "ts": now,
+                "nics": nics,
+                "disks": disks
+            }
+            
             return nics, disks
         except Exception as e:
             logger.error(f"Error extracting devices: {str(e)}")
             return [], []
+    
+    def get_interface_stats(self, dom: libvirt.virDomain, iface_name: str) -> Dict[str, int]:
+        """
+        Get network interface statistics for a single interface.
+        
+        Returns:
+            Dict with keys: rxbytes, rxpackets, rxerrors, rxdrops, txbytes, txpackets, txerrors, txdrops
+        """
+        try:
+            stats = dom.interfaceStats(iface_name)
+            # Returns: (rxbytes, rxpackets, rxerrors, rxdrops, txbytes, txpackets, txerrors, txdrops)
+            return {
+                "rxbytes": int(stats[0] or 0),
+                "rxpackets": int(stats[1] or 0),
+                "rxerrors": int(stats[2] or 0),
+                "rxdrops": int(stats[3] or 0),
+                "txbytes": int(stats[4] or 0),
+                "txpackets": int(stats[5] or 0),
+                "txerrors": int(stats[6] or 0),
+                "txdrops": int(stats[7] or 0),
+            }
+        except libvirt.libvirtError as e:
+            logger.warning(f"Error getting stats for interface {iface_name}: {str(e)}")
+            return {
+                "rxbytes": 0, "rxpackets": 0, "rxerrors": 0, "rxdrops": 0,
+                "txbytes": 0, "txpackets": 0, "txerrors": 0, "txdrops": 0,
+            }
+    
+    def get_block_stats(self, dom: libvirt.virDomain, block_name: str) -> Dict[str, int]:
+        """
+        Get block device (disk) I/O statistics.
+        
+        Returns:
+            Dict with keys: rd_req, rd_bytes, wr_reqs, wr_bytes, errors
+        """
+        try:
+            stats = dom.blockStats(block_name)
+            # Returns: (rd_req, rd_bytes, wr_reqs, wr_bytes, errs)
+            return {
+                "rd_req": int(stats[0] or 0),
+                "rd_bytes": int(stats[1] or 0),
+                "wr_reqs": int(stats[2] or 0),
+                "wr_bytes": int(stats[3] or 0),
+                "errors": int(stats[4] or 0),
+            }
+        except libvirt.libvirtError as e:
+            logger.warning(f"Error getting stats for block {block_name}: {str(e)}")
+            return {
+                "rd_req": 0, "rd_bytes": 0, "wr_reqs": 0, "wr_bytes": 0, "errors": 0
+            }
+    
+    def get_memory_stats(self, dom: libvirt.virDomain) -> Dict[str, int]:
+        """
+        Get extended memory statistics using memoryStats().
+        
+        Returns:
+            Dict with memory metrics including balloon stats
+        """
+        try:
+            mem_stats = dom.memoryStats()
+            
+            # Extract memory fields with defaults to 0
+            return {
+                "memactual": int(mem_stats.get("actual", 0) or 0),
+                "memrss": int(mem_stats.get("rss", 0) or 0),
+                "memavailable": int(mem_stats.get("available", 0) or 0),
+                "memusable": int(mem_stats.get("usable", 0) or 0),
+                "memswap_in": int(mem_stats.get("swap_in", 0) or 0),
+                "memswap_out": int(mem_stats.get("swap_out", 0) or 0),
+                "memmajor_fault": int(mem_stats.get("major_fault", 0) or 0),
+                "memminor_fault": int(mem_stats.get("minor_fault", 0) or 0),
+                "memdisk_cache": int(mem_stats.get("disk_caches", 0) or 0),
+            }
+        except libvirt.libvirtError as e:
+            logger.warning(f"Error getting memory stats: {str(e)}")
+            return {
+                "memactual": 0, "memrss": 0, "memavailable": 0, "memusable": 0,
+                "memswap_in": 0, "memswap_out": 0, "memmajor_fault": 0,
+                "memminor_fault": 0, "memdisk_cache": 0,
+            }
+    
+    def get_cpu_stats(self, dom: libvirt.virDomain) -> Dict[str, int]:
+        """
+        Get CPU time breakdown (user vs system mode).
+        
+        Returns:
+            Dict with keys: timeusr (user time), timesys (system time)
+        """
+        try:
+            # Get detailed domain stats if available
+            stats = dom.getCPUStats(True)  # True = live CPU stats
+            
+            # Try to extract user and system time
+            if isinstance(stats, list) and len(stats) > 0:
+                cpu_dict = stats[0]
+                return {
+                    "timeusr": int(cpu_dict.get("user_time", 0) or 0),
+                    "timesys": int(cpu_dict.get("system_time", 0) or 0),
+                }
+        except libvirt.libvirtError:
+            pass
+        
+        # Fallback: try domainGetStats for CPU breakdown
+        try:
+            dom_stats = (
+                self._libvirt_compat["VIR_DOMAIN_STATS_CPU_TOTAL"]
+            )
+            stats_flags = (
+                self._libvirt_compat["VIR_CONNECT_GET_ALL_DOMAINS_STATS_ACTIVE"]
+            )
+            
+            all_stats = self._conn.getAllDomainStats(dom_stats, stats_flags)
+            for dom_obj, stats_dict in all_stats:
+                if dom_obj.ID() == dom.ID():
+                    return {
+                        "timeusr": int(stats_dict.get("cpu.time", 0) or 0),
+                        "timesys": int(stats_dict.get("cpu.system", 0) or 0),
+                    }
+        except (libvirt.libvirtError, TypeError):
+            pass
+        
+        # Default values if unable to retrieve
+        logger.debug("Unable to retrieve CPU breakdown stats")
+        return {
+            "timeusr": 0,
+            "timesys": 0,
+        }

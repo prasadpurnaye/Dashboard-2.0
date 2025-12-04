@@ -145,9 +145,14 @@ async def get_monitored_vms() -> Dict[str, Any]:
     
     try:
         vms = collector.get_vms()
+        # Remove non-serializable 'dom' object from each VM
+        vms_serializable = [
+            {k: v for k, v in vm.items() if k != "dom"}
+            for vm in vms
+        ]
         return {
-            "count": len(vms),
-            "vms": vms
+            "count": len(vms_serializable),
+            "vms": vms_serializable
         }
     except Exception as e:
         logger.error(f"Error getting VMs: {str(e)}")
@@ -223,10 +228,16 @@ async def get_live_vms() -> Dict[str, Any]:
         
         logger.info(f"✓ Retrieved {len(live_vms)} live VMs from KVM")
         
+        # Remove non-serializable 'dom' object from each VM
+        vms_serializable = [
+            {k: v for k, v in vm.items() if k != "dom"}
+            for vm in live_vms
+        ]
+        
         return {
-            "count": len(live_vms),
+            "count": len(vms_serializable),
             "source": "libvirt",
-            "vms": live_vms
+            "vms": vms_serializable
         }
     
     except HTTPException:
